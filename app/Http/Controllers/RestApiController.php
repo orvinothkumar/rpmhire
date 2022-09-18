@@ -659,7 +659,7 @@ class RestApiController extends Controller
         if ($total > 0) {
             $pageNo = intval($results[0]->value);
         }
-        $posApiURL = env('POR_APIURL', '');
+        $posApiURL = env('POR_APIURL', 'http://syrinx.rpmhire.com.au:5454/syrinxwebapi/api/v1.1/');
         $options = array(
             'http' => array(
                 'method' => 'GET',
@@ -672,9 +672,9 @@ class RestApiController extends Controller
         // print_r($posResult['access_Token']);
 
         do {
-            $UserCode = env('CRM_USERCODE', '');
-            $APIToken = env('CRM_APIKEY', '');
-            $EndpointURL = env('CRM_APIURL', '');
+            $UserCode = env('CRM_USERCODE', 'B22D2');
+            $APIToken = env('CRM_APIKEY', '729810-yEhSWkDcBBOOBp5yv6KQVVFDhErBFfjp71ECOvOq3MHZrhLsqd');
+            $EndpointURL = env('CRM_APIURL', 'https://api.lessannoyingcrm.com');
             $Function = "SearchContacts";
             $Parameters = array(
                 "SearchTerms" => "",
@@ -759,7 +759,7 @@ class RestApiController extends Controller
                         if (count($APIResult['Result'][$i]['Email']) > 0) {
                             if ($APIResult['Result'][$i]['Email'][0]['Text'] == 'info@testorg.com') {
 
-                                $posApiURL = env('POR_APIURL', '');
+                                $posApiURL = env('POR_APIURL', 'http://syrinx.rpmhire.com.au:5454/syrinxwebapi/api/v1.1/');
                                 $postData = array(
                                     array(
                                         'name' => $APIResult['Result'][$i]['CompanyName'],
@@ -835,7 +835,7 @@ class RestApiController extends Controller
                         if (count($APIResult['Result'][$i]['Email']) > 0) {
                             if ($APIResult['Result'][$i]['Email'][0]['Text'] == 'orvinothkumar@gmail.com') {
 
-                                $posApiURL = env('POR_APIURL', '');
+                                $posApiURL = env('POR_APIURL', 'http://syrinx.rpmhire.com.au:5454/syrinxwebapi/api/v1.1/');
                                 $postData = array(
                                     array(
                                         'title' => $APIResult['Result'][$i]['Salutation'],
@@ -917,7 +917,7 @@ class RestApiController extends Controller
             $pageNo = intval($results[0]->value);
         }
 
-        $posApiURL = env('POR_APIURL', '');
+        $posApiURL = env('POR_APIURL', 'http://syrinx.rpmhire.com.au:5454/syrinxwebapi/api/v1.1/');
         $authOptions = array(
             'http' => array(
                 'method' => 'GET',
