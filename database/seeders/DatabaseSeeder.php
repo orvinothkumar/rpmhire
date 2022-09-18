@@ -56,5 +56,13 @@ class DatabaseSeeder extends Seeder
             'api_token' => '',
             'status' => 1,
         ]);
+        DB::table('configurations')->insert([
+            'key' => 'CONTACT_PAGE_NO',
+            'value' => '1',
+        ]);
+        DB::table('configurations')->insert([
+            'key' => 'CONTRACT_PAGE_NO',
+            'value' => '1',
+        ]);
     }
 }

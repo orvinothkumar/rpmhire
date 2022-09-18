@@ -36,7 +36,8 @@ class Contracts extends Component
         $contracts = Contract::whereNotNull('created_at')
             ->when($this->q, function ($query) {
                 return $query->where(function ($query) {
-                    $query->where('contractId', 'like', '%' . $this->q . '%');
+                    $query->where('contractId', 'like', '%' . $this->q . '%')
+                        ->orwhere('contractData', 'like', '%' . $this->q . '%');
                 });
             })
             ->orderBy($this->sortBy, $this->sortAsc ? 'ASC' : 'DESC'); //->get()->toArray();

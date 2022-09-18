@@ -36,7 +36,8 @@ class Contacts extends Component
         $contacts = Contact::whereNotNull('created_at')
             ->when($this->q, function ($query) {
                 return $query->where(function ($query) {
-                    $query->where('contactId', 'like', '%' . $this->q . '%');
+                    $query->where('contactId', 'like', '%' . $this->q . '%')
+                        ->orwhere('contactData', 'like', '%' . $this->q . '%');
                 });
             })
             ->orderBy($this->sortBy, $this->sortAsc ? 'ASC' : 'DESC'); //->get()->toArray();

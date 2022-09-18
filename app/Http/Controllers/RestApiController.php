@@ -650,33 +650,15 @@ class RestApiController extends Controller
         $response = array();
         $responseCode = 200;
 
-        $UserCode = env('CRM_USERCODE', '');
-        $APIToken = env('CRM_APIKEY', '');
-        $EndpointURL = env('CRM_APIURL', '');
-        $Function = "SearchContacts";
-        $Parameters = array(
-            "SearchTerms" => "",
-        );
-        $PostData = array(
-            'UserCode' => $UserCode,
-            'APIToken' => $APIToken,
-            'Function' => $Function,
-            'Parameters' => json_encode($Parameters),
-        );
-        $Options = array(
-            'http' => array(
-                'method' => 'POST',
-                'header' => 'Content-type: application/x-www-form-urlencoded',
-                'content' => http_build_query($PostData),
-            ),
-        );
-        $StreamContext = stream_context_create($Options);
-        $APIResult = file_get_contents("$EndpointURL?UserCode=$UserCode", false, $StreamContext);
-        $APIResult = json_decode($APIResult, true);
-        // if (@$APIResult['Success'] === true) {
-        //     echo "Success!";
-        // }
+        $pageNo = 1;
+        $totalRecords = 0;
+        $query = "SELECT * FROM `configurations` WHERE (`key` = 'CONTACT_PAGE_NO')";
+        $results = DB::select($query);
+        $total = count($results);
 
+        if ($total > 0) {
+            $pageNo = intval($results[0]->value);
+        }
         $posApiURL = env('POR_APIURL', '');
         $options = array(
             'http' => array(
@@ -688,57 +670,235 @@ class RestApiController extends Controller
         $posResult = file_get_contents($posApiURL . "Auth", false, $streamContext);
         $posResult = json_decode($posResult, true);
         // print_r($posResult['access_Token']);
-        for ($i = 0; $i < count($APIResult['Result']); $i++) {
 
-            $query = "SELECT * FROM `contacts` WHERE contactId='" . $APIResult['Result'][$i]['ContactId'] . "'";
-            $results = DB::select($query);
-            $total = count($results);
+        do {
+            $UserCode = env('CRM_USERCODE', '');
+            $APIToken = env('CRM_APIKEY', '');
+            $EndpointURL = env('CRM_APIURL', '');
+            $Function = "SearchContacts";
+            $Parameters = array(
+                "SearchTerms" => "",
+                "NumRows" => 500,
+                "Page" => $pageNo,
+            );
+            $PostData = array(
+                'UserCode' => $UserCode,
+                'APIToken' => $APIToken,
+                'Function' => $Function,
+                'Parameters' => json_encode($Parameters),
+            );
+            $Options = array(
+                'http' => array(
+                    'method' => 'POST',
+                    'header' => 'Content-type: application/x-www-form-urlencoded',
+                    'content' => http_build_query($PostData),
+                ),
+            );
+            $StreamContext = stream_context_create($Options);
+            $APIResult = file_get_contents("$EndpointURL?UserCode=$UserCode", false, $StreamContext);
+            $APIResult = json_decode($APIResult, true);
 
-            if ($total == 0) {
-
+            if (count($APIResult['Result']) == 500) {
+                $pageNo = $pageNo + 1;
                 try {
-                    $Insertid = DB::table('contacts')->insertGetId([
-                        'contactId' => $APIResult['Result'][$i]['ContactId'],
-                        'contactData' => json_encode($APIResult['Result'][$i]),
-                        'status' => 0,
-                        'created_at' => date('Y-m-d H:i:s'),
-                    ]);
-
-                    // if ($Insertid > 0) {
-                    //     echo "contactId inserted";
-                    // } else {
-                    //     echo "contactId not inserted";
-                    // }
-
-                    $response = array('status' => 'success', 'data' => $APIResult['Result']);
-                    $responseCode = 200;
+                    $updated = DB::table('configurations')
+                        ->where('key', 'CONTACT_PAGE_NO')
+                        ->update([
+                            'value' => $pageNo . "",
+                        ]);
                 } catch (QueryException | \Exception $e) {
-                    $response = array('status' => 'error', "message" => "Error on inserting contact", "errors" => $e->getMessage());
+                    $response = array('status' => 'error', "message" => "Error on OTP verification", "errors" => $e->getMessage());
                     $responseCode = 200;
                 }
             } else {
-                try {
-                    $updated = DB::table('contacts')
-                        ->where('contactId', $APIResult['Result'][$i]['ContactId'])
-                        ->update([
+                $pageNo = $pageNo + 1;
+            }
+            $totalRecords = $totalRecords + count($APIResult['Result']);
+            for ($i = 0; $i < count($APIResult['Result']); $i++) {
+
+                $query = "SELECT * FROM `contacts` WHERE contactId='" . $APIResult['Result'][$i]['ContactId'] . "'";
+                $results = DB::select($query);
+                $total = count($results);
+
+                if ($total == 0) {
+
+                    try {
+                        $Insertid = DB::table('contacts')->insertGetId([
+                            'contactId' => $APIResult['Result'][$i]['ContactId'],
                             'contactData' => json_encode($APIResult['Result'][$i]),
-                            'updated_at' => date('Y-m-d H:i:s'),
+                            'status' => 0,
+                            'created_at' => date('Y-m-d H:i:s'),
                         ]);
 
-                    // if ($updated) {
-                    //     echo "contactId updated";
-                    // } else {
-                    //     echo "contactId not updated";
-                    // }
+                        $response = array('status' => 'success', 'data' => $totalRecords . ' contacts processed');
+                        $responseCode = 200;
+                    } catch (QueryException | \Exception $e) {
+                        $response = array('status' => 'error', "message" => "Error on inserting contact", "errors" => $e->getMessage());
+                        $responseCode = 200;
+                    }
+                } else {
+                    try {
+                        $updated = DB::table('contacts')
+                            ->where('contactId', $APIResult['Result'][$i]['ContactId'])
+                            ->update([
+                                'contactData' => json_encode($APIResult['Result'][$i]),
+                                'updated_at' => date('Y-m-d H:i:s'),
+                            ]);
 
-                    $response = array('status' => 'success', 'data' => $APIResult['Result']);
-                    $responseCode = 200;
-                } catch (QueryException | \Exception $e) {
-                    $response = array('status' => 'error', "message" => "Error on updating contact", "errors" => $e->getMessage());
-                    $responseCode = 200;
+                        $response = array('status' => 'success', 'data' => $totalRecords . ' contacts processed');
+                        $responseCode = 200;
+                    } catch (QueryException | \Exception $e) {
+                        $response = array('status' => 'error', "message" => "Error on updating contact", "errors" => $e->getMessage());
+                        $responseCode = 200;
+                    }
+                }
+
+                if ($APIResult['Result'][$i]['IsCompany'] == '1') {
+                    if ($APIResult['Result'][$i]['Email'] != '') {
+
+                        if (count($APIResult['Result'][$i]['Email']) > 0) {
+                            if ($APIResult['Result'][$i]['Email'][0]['Text'] == 'info@testorg.com') {
+
+                                $posApiURL = env('POR_APIURL', '');
+                                $postData = array(
+                                    array(
+                                        'name' => $APIResult['Result'][$i]['CompanyName'],
+                                        'type' => 'A',
+                                        'accNo' => 'X0002',
+                                        'vatNumber' => '',
+                                        'email' => $APIResult['Result'][$i]['Email'][0]['Text'],
+                                        "taxCode" => null,
+                                        "locTaxCode" => null,
+                                        "internal" => false,
+                                        "companyType" => "Company",
+                                        'address' => array(
+                                            "name" => "DEPOT",
+                                            "line1" => "Head Office",
+                                            "line2" => null,
+                                            "line3" => "UK",
+                                            "town" => "CAVERSHAM",
+                                            "county" => "BERKSHIRE",
+                                            "postcode" => "RG4 5BB",
+                                            "telephone" => "07783022961",
+                                        ),
+                                        "marketingCategory" => "Construction",
+                                        "prop1" => "XYZ1",
+                                        "prop6" => "XYZ61",
+                                        "prop7" => "",
+                                        "prop8" => "",
+                                        "prop9" => "XYZ91",
+                                        "prop10" => "XYZ010",
+                                        "currentFlag" => true,
+                                        "canUseAnyDepot" => true,
+                                        "onHold" => false,
+                                        "depot" => array(
+                                            "name" => "VIC",
+                                            "shortCode" => "VIC",
+                                            "accountsDept" => "VIC",
+                                        ),
+                                        "exportToAccounts" => false,
+                                        "creditLimit" => 1000.00,
+                                        "accountBalance" => 500.00,
+                                    ),
+                                );
+
+                                $postdata = json_encode($postData, true);
+
+                                // API URL
+                                $url = $posApiURL . "Customers";
+
+                                // Create a new cURL resource
+                                $ch = curl_init($url);
+
+                                // Attach encoded JSON string to the POST fields
+                                curl_setopt($ch, CURLOPT_POSTFIELDS, $postdata);
+
+                                // Set the content type to application/json
+                                $authorization = "Authorization: Bearer " . $posResult['access_Token'];
+                                curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json', $authorization));
+                                // Return response instead of outputting
+                                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+                                // Execute the POST request
+                                $result = curl_exec($ch);
+
+                                // Close cURL resource
+                                curl_close($ch);
+                            }
+                        }
+                    }
+
+                } else {
+
+                    if ($APIResult['Result'][$i]['Email'] != '') {
+
+                        if (count($APIResult['Result'][$i]['Email']) > 0) {
+                            if ($APIResult['Result'][$i]['Email'][0]['Text'] == 'orvinothkumar@gmail.com') {
+
+                                $posApiURL = env('POR_APIURL', '');
+                                $postData = array(
+                                    array(
+                                        'title' => $APIResult['Result'][$i]['Salutation'],
+                                        'firstNames' => $APIResult['Result'][$i]['FirstName'],
+                                        'surname' => $APIResult['Result'][$i]['LastName'],
+                                        'telephone' => $APIResult['Result'][$i]['Phone'][0]['Text'],
+                                        'mobile' => $APIResult['Result'][$i]['Phone'][0]['Text'],
+                                        'email' => $APIResult['Result'][$i]['Email'][0]['Text'],
+                                        'userLogin' => array(
+                                            'userName' => $APIResult['Result'][$i]['FirstName'],
+                                            'loweredUserName' => $APIResult['Result'][$i]['FirstName'],
+                                            'isLockedOut' => true,
+                                            'resetPassword' => true,
+                                        ),
+                                        'fax' => '',
+                                        'prop1' => '',
+                                        'prop2' => '',
+                                        'mainContact' => true,
+                                        'marketingContact' => true,
+                                        'csjContact' => true,
+                                        'canOrderOnline' => true,
+                                        'dateAdded' => date('Y-m-d H:i:s'),
+                                        'salutation' => $APIResult['Result'][$i]['Salutation'],
+                                        'notes' => '',
+                                        'onHireReport' => '',
+                                        'addedBy' => 'admin',
+                                        'site' => 'Head Office',
+                                        'company' => 'testorg',
+                                        'companyAccNo' => 'X0001',
+                                        'customerId' => 1340,
+                                        'supplierId' => null,
+                                        'isCurrent' => true,
+                                    ),
+                                );
+
+                                $postdata = json_encode($postData, true);
+
+                                // API URL
+                                $url = $posApiURL . "Contact";
+
+                                // Create a new cURL resource
+                                $ch = curl_init($url);
+
+                                // Attach encoded JSON string to the POST fields
+                                curl_setopt($ch, CURLOPT_POSTFIELDS, $postdata);
+
+                                // Set the content type to application/json
+                                $authorization = "Authorization: Bearer " . $posResult['access_Token'];
+                                curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json', $authorization));
+                                // Return response instead of outputting
+                                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+                                // Execute the POST request
+                                $result = curl_exec($ch);
+
+                                // Close cURL resource
+                                curl_close($ch);
+                            }
+                        }
+                    }
                 }
             }
-        }
+        } while (count($APIResult['Result']) > 0);
         return response()->json($response, $responseCode);
     }
 
@@ -746,6 +906,16 @@ class RestApiController extends Controller
     {
         $response = array();
         $responseCode = 200;
+
+        $pageNo = 1;
+        $totalRecords = 0;
+        $query = "SELECT * FROM `configurations` WHERE (`key` = 'CONTRACT_PAGE_NO')";
+        $results = DB::select($query);
+        $total = count($results);
+
+        if ($total > 0) {
+            $pageNo = intval($results[0]->value);
+        }
 
         $posApiURL = env('POR_APIURL', '');
         $authOptions = array(
@@ -759,69 +929,136 @@ class RestApiController extends Controller
         $posAuthResult = json_decode($posAuthResult, true);
         // print_r($posAuthResult['access_Token']);
 
-        $contractOptions = array(
-            'http' => array(
-                'method' => 'GET',
-                'header' => 'Authorization: Bearer ' . $posAuthResult['access_Token'],
-            ),
-        );
-        $streamContextContract = stream_context_create($contractOptions);
-        $posContractResult = file_get_contents($posApiURL . "HireContracts", false, $streamContextContract);
-        $posContractResult = json_decode($posContractResult, true);
-        // echo "<pre>";
-        // print_r($posContractResult['results']);
-        for ($i = 0; $i < count($posContractResult['results']); $i++) {
-
-            $query = "SELECT * FROM `contracts` WHERE contractId='" . $posContractResult['results'][$i]['contractNumber'] . "'";
-            $results = DB::select($query);
-            $total = count($results);
-
-            if ($total == 0) {
-
+        do {
+            $contractOptions = array(
+                'http' => array(
+                    'method' => 'GET',
+                    'header' => 'Authorization: Bearer ' . $posAuthResult['access_Token'],
+                ),
+            );
+            $streamContextContract = stream_context_create($contractOptions);
+            $posContractResult = file_get_contents($posApiURL . "HireContracts?PageNo=" . $pageNo, false, $streamContextContract);
+            $posContractResult = json_decode($posContractResult, true);
+            if (count($posContractResult['results']) == 200) {
+                $pageNo = $pageNo + 1;
                 try {
-                    $Insertid = DB::table('contracts')->insertGetId([
-                        'contractId' => $posContractResult['results'][$i]['contractNumber'],
-                        'contractData' => json_encode($posContractResult['results'][$i]),
-                        'status' => 0,
-                        'created_at' => date('Y-m-d H:i:s'),
-                    ]);
-
-                    // if ($Insertid > 0) {
-                    //     echo "contactId inserted";
-                    // } else {
-                    //     echo "contactId not inserted";
-                    // }
-
-                    $response = array('status' => 'success', 'data' => $posContractResult['results']);
-                    $responseCode = 200;
+                    $updated = DB::table('configurations')
+                        ->where('key', 'CONTRACT_PAGE_NO')
+                        ->update([
+                            'value' => $pageNo . "",
+                        ]);
                 } catch (QueryException | \Exception $e) {
-                    $response = array('status' => 'error', "message" => "Error on inserting contract", "errors" => $e->getMessage());
+                    $response = array('status' => 'error', "message" => "Error on OTP verification", "errors" => $e->getMessage());
                     $responseCode = 200;
                 }
             } else {
-                try {
-                    $updated = DB::table('contracts')
-                        ->where('contractId', $posContractResult['results'][$i]['contractNumber'])
-                        ->update([
+                $pageNo = $pageNo + 1;
+            }
+            // echo "<pre>";
+            // print_r($posContractResult['results']);
+            for ($i = 0; $i < count($posContractResult['results']); $i++) {
+
+                $query = "SELECT * FROM `contracts` WHERE contractId='" . $posContractResult['results'][$i]['contractNumber'] . "'";
+                $results = DB::select($query);
+                $total = count($results);
+
+                if ($total == 0) {
+
+                    try {
+                        $Insertid = DB::table('contracts')->insertGetId([
+                            'contractId' => $posContractResult['results'][$i]['contractNumber'],
                             'contractData' => json_encode($posContractResult['results'][$i]),
-                            'updated_at' => date('Y-m-d H:i:s'),
+                            'status' => 0,
+                            'created_at' => date('Y-m-d H:i:s'),
                         ]);
 
-                    // if ($updated) {
-                    //     echo "contactId updated";
-                    // } else {
-                    //     echo "contactId not updated";
-                    // }
+                        // if ($Insertid > 0) {
+                        //     echo "contactId inserted";
+                        // } else {
+                        //     echo "contactId not inserted";
+                        // }
 
-                    $response = array('status' => 'success', 'data' => $posContractResult['results']);
-                    $responseCode = 200;
-                } catch (QueryException | \Exception $e) {
-                    $response = array('status' => 'error', "message" => "Error on updating contract", "errors" => $e->getMessage());
-                    $responseCode = 200;
+                        $response = array('status' => 'success', 'data' => $posContractResult['results']);
+                        $responseCode = 200;
+                    } catch (QueryException | \Exception $e) {
+                        $response = array('status' => 'error', "message" => "Error on inserting contract", "errors" => $e->getMessage());
+                        $responseCode = 200;
+                    }
+                } else {
+                    try {
+                        $updated = DB::table('contracts')
+                            ->where('contractId', $posContractResult['results'][$i]['contractNumber'])
+                            ->update([
+                                'contractData' => json_encode($posContractResult['results'][$i]),
+                                'updated_at' => date('Y-m-d H:i:s'),
+                            ]);
+
+                        // if ($updated) {
+                        //     echo "contactId updated";
+                        // } else {
+                        //     echo "contactId not updated";
+                        // }
+                        if ($posContractResult['results'][$i]['depot']['shortCode'] == 'QLD') {
+                            echo '<pre>';
+                            echo $posContractResult['results'][$i]['depot']['shortCode'] . '<br/>';
+                            // $UserCode = env('CRM_USERCODE', '');
+                            // $APIToken = env('CRM_APIKEY', '');
+                            // $EndpointURL = env('CRM_APIURL', '');
+                            // $Function = "CreatePipeline";
+
+                            // $Parameters = array(
+                            //     "ContactId" => "3807894511676232218439000044690",
+                            //     "Note" => "This is a test note",
+                            //     "PipelineId" => "3764788017911920143572403834037",
+                            //     "StatusId" => "3764788017911920143572403834037",
+                            //     "Priority" => 1,
+                            //     "CustomFields" => array(
+                            //         "3788890953338245703431108724278" => "Contact",
+                            //         "3788891001498082793868320415071" => "State",
+                            //         "3788891056409428215283227850644" => "Equipment type 1",
+                            //         "3788891107852785750840740255273" => "Quoted Amount",
+                            //         "3788891297130215005156021626464" => "Close Date",
+                            //         "3794809875214954817037563293922" => "Estimate Hire end date",
+                            //         "3788891381556350944506211486863" => "Assigned to",
+                            //         "3788892241748779688665526392157" => "POR Contract number (HCxxxx)",
+                            //         "3788890976484297829918168728851" => "Company",
+                            //         "3788891028683971872497771452690" => "Probability",
+                            //         "3788891078181197908278926525591" => "Qty of Equipment 1",
+                            //         "3788891251087141797176979807774" => "Lead Source",
+                            //         "3788891328602666237913730117954" => "Estimated Hire start date",
+                            //         "3788891408668453046840824179296" => "Equipment type 2",
+                            //         "3794809706648607471479680682278" => "Barrier price per m (if applicable) c/m",
+                            //         "3794809852530071292393242578615" => "Barrier Type",
+                            //     ),
+                            // );
+                            // $PostData = array(
+                            //     'UserCode' => $UserCode,
+                            //     'APIToken' => $APIToken,
+                            //     'Function' => $Function,
+                            //     'Parameters' => json_encode($Parameters),
+                            // );
+                            // $Options = array(
+                            //     'http' => array(
+                            //         'method' => 'POST',
+                            //         'header' => 'Content-type: application/x-www-form-urlencoded',
+                            //         'content' => http_build_query($PostData),
+                            //     ),
+                            // );
+                            // $StreamContext = stream_context_create($Options);
+                            // $APIResult = file_get_contents("$EndpointURL?UserCode=$UserCode", false, $StreamContext);
+                            // $APIResult = json_decode($APIResult, true);
+
+                        }
+
+                        $response = array('status' => 'success', 'data' => $posContractResult['results']);
+                        $responseCode = 200;
+                    } catch (QueryException | \Exception $e) {
+                        $response = array('status' => 'error', "message" => "Error on updating contract", "errors" => $e->getMessage());
+                        $responseCode = 200;
+                    }
                 }
             }
-        }
-
+        } while (count($posContractResult['results']) > 0);
         return response()->json($response, $responseCode);
     }
 
